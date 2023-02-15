@@ -11,6 +11,9 @@ class ExtruderStepper:
         self.printer = config.get_printer()
         self.name = config.get_name().split()[-1]
         self.pressure_advance = self.pressure_advance_smooth_time = 0.
+        self.config_pa = config.getfloat('pressure_advance', 0., minval=0.)
+        self.config_smooth_time = config.getfloat(
+                'pressure_advance_smooth_time', 0.040, above=0., maxval=.200)
         # Setup stepper
         self.stepper = stepper.PrinterStepper(config)
         ffi_main, ffi_lib = chelper.get_ffi()
@@ -43,6 +46,7 @@ class ExtruderStepper:
     def _handle_connect(self):
         toolhead = self.printer.lookup_object('toolhead')
         toolhead.register_step_generator(self.stepper.generate_steps)
+        self._set_pressure_advance(self.config_pa, self.config_smooth_time)
     def get_status(self, eventtime):
         return {'pressure_advance': self.pressure_advance,
                 'smooth_time': self.pressure_advance_smooth_time}
@@ -123,7 +127,8 @@ class ExtruderStepper:
     def cmd_SYNC_EXTRUDER_MOTION(self, gcmd):
         ename = gcmd.get('MOTION_QUEUE')
         self.sync_to_extruder(ename)
-        gcmd.respond_info("Extruder stepper now syncing with '%s'" % (ename,))
+        gcmd.respond_info("Extruder '%s' now syncing with '%s'"
+                          % (self.name, ename))
     cmd_SET_E_STEP_DISTANCE_help = "Set extruder step distance"
     def cmd_SET_E_STEP_DISTANCE(self, gcmd):
         step_dist = gcmd.get_float('DISTANCE', None, above=0.)
@@ -140,7 +145,8 @@ class ExtruderStepper:
     def cmd_SYNC_STEPPER_TO_EXTRUDER(self, gcmd):
         ename = gcmd.get('EXTRUDER')
         self.sync_to_extruder(ename)
-        gcmd.respond_info("Extruder stepper now syncing with '%s'" % (ename,))
+        gcmd.respond_info("Extruder '%s' now syncing with '%s'"
+                          % (self.name, ename))
 
 # Tracking for hotend heater, extrusion motion queue, and extruder stepper
 class PrinterExtruder:
@@ -192,10 +198,6 @@ class PrinterExtruder:
             or config.get('rotation_distance', None) is not None):
             self.extruder_stepper = ExtruderStepper(config)
             self.extruder_stepper.stepper.set_trapq(self.trapq)
-            pa = config.getfloat('pressure_advance', 0., minval=0.)
-            smooth_time = config.getfloat('pressure_advance_smooth_time',
-                                          0.040, above=0., maxval=.200)
-            self.extruder_stepper._set_pressure_advance(pa, smooth_time)
         # Register commands
         gcode = self.printer.lookup_object('gcode')
         if self.name == 'extruder':
